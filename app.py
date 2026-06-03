@@ -5,14 +5,17 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 def extract_text_from_pdf(pdf_file):
-    """Extracts raw text from an uploaded PDF file."""
-    with pdfplumber.open(pdf_file) as pdf:
-        text = ""
-        for page in pdf.pages:
-            page_text = page.extract_text()
-            if page_text:
-                text += page_text + "\n"
-    return text.strip()
+    """Extracts raw text from an uploaded PDF file safely."""
+    try:
+        with pdfplumber.open(pdf_file) as pdf:
+            text = ""
+            for page in pdf.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text += page_text + "\n"
+        return text.strip()
+    except Exception as e:
+        return ""
 
 def calculate_match_score(resume_text, job_description):
     """Calculates the similarity percentage between a resume and a job description."""
@@ -55,6 +58,12 @@ if uploaded_files and job_desc.strip():
     for file in uploaded_files:
         with st.spinner(f"Processing {file.name}..."):
             resume_text = extract_text_from_pdf(file)
+            
+            # If extraction failed, warn the user and skip to the next file
+            if not resume_text:
+                st.warning(f"⚠️ Could not read {file.name}. Please ensure it is a valid PDF.")
+                continue
+                
             score = calculate_match_score(resume_text, job_desc)
             
             results.append({
@@ -62,18 +71,21 @@ if uploaded_files and job_desc.strip():
                 "Match Score (%)": score
             })
             
-    df = pd.DataFrame(results)
-    df = df.sort_values(by="Match Score (%)", ascending=False).reset_index(drop=True)
-    
-    top_candidate = df.iloc[0]["Candidate Name"]
-    top_score = df.iloc[0]["Match Score (%)"]
-    
-    col1, col2 = st.columns(2)
-    col1.metric(label="Total Resumes Evaluated", value=len(df))
-    col2.metric(label="Top Match Candidate", value=top_candidate, delta=f"{top_score}% Match")
-    
-    st.markdown("### 🏆 Final Rankings")
-    st.dataframe(df, use_container_width=True)
+    if results:
+        df = pd.DataFrame(results)
+        df = df.sort_values(by="Match Score (%)", ascending=False).reset_index(drop=True)
+        
+        top_candidate = df.iloc[0]["Candidate Name"]
+        top_score = df.iloc[0]["Match Score (%)"]
+        
+        col1, col2 = st.columns(2)
+        col1.metric(label="Total Resumes Evaluated", value=len(df))
+        col2.metric(label="Top Match Candidate", value=top_candidate, delta=f"{top_score}% Match")
+        
+        st.markdown("### 🏆 Final Rankings")
+        st.dataframe(df, use_container_width=True)
+    else:
+        st.error("No valid resumes could be processed.")
 
 elif uploaded_files and not job_desc.strip():
     st.warning("⚠️ Please paste a Job Description in the sidebar to begin screening.")
